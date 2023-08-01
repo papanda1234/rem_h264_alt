@@ -1,8 +1,24 @@
-/**
- * @brief Decode a Sequence Parameter Set (SPS) bitstream
- * @licence 2 clause BSD license
- * @copyright Copyright (C) 2010 - 2019 Creytiv.com
+/*
+ * H.26L/H.264/AVC/JVT/14496-10/... parameter set decoding
+ * Copyright (c) 2003 Michael Niedermayer <michaelni@gmx.at>
+ *
+ * This file is part of FFmpeg.
+ *
+ * FFmpeg is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * FFmpeg is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with FFmpeg; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
+
 #include <stdio.h>
 #include <stdint.h>
 #include <errno.h>
@@ -11,7 +27,9 @@
 #include "sps.h"
 
 /**
- * @brief Exponential Golomb Decorder
+ * @brief h264/getbit.c Generic bit parser
+ *
+ * Copyright (C) 2010 Creytiv.com
  */
 struct getbit {
 	const uint8_t *buf;
@@ -19,10 +37,104 @@ struct getbit {
 	size_t end;
 };
 
-static void     getbit_init(struct getbit *gb, const uint8_t *buf, size_t size);
-static size_t   getbit_get_left(const struct getbit *gb);
-static unsigned get_bit(struct getbit *gb);
-static int      get_ue_golomb(struct getbit *gb, unsigned *valp);
+/**
+ * @brief h264/getbit.c Generic bit parser. create a instance.
+ *
+ * Copyright (C) 2010 Creytiv.com
+ */
+static void getbit_init(struct getbit *gb, const uint8_t *buf, size_t size)
+{
+	if (!gb)
+		return;
+
+	gb->buf = buf;
+	gb->pos = 0;
+	gb->end = size;
+}
+
+/**
+ * @brief h264/getbit.c Generic bit parser. remaining number of bits.
+ *
+ * Copyright (C) 2010 Creytiv.com
+ */
+static size_t getbit_get_left(const struct getbit *gb)
+{
+	if (!gb)
+		return 0;
+
+	if (gb->end > gb->pos)
+		return gb->end - gb->pos;
+	else
+		return 0;
+}
+
+/**
+ * @brief h264/getbit.c Generic bit parser. read a bit.
+ *
+ * Copyright (C) 2010 Creytiv.com
+ */
+static unsigned get_bit(struct getbit *gb)
+{
+	const uint8_t *p;
+	register unsigned tmp;
+
+	if (!gb)
+		return 0;
+
+	if (gb->pos >= gb->end) {
+		fprintf(stderr, "get_bit: read past end"
+			   " (%zu >= %zu)\n", gb->pos, gb->end);
+		return 0;
+	}
+
+	p = gb->buf;
+	tmp = ((*(p + (gb->pos >> 0x3))) >> (0x7 - (gb->pos & 0x7))) & 0x1;
+
+	++gb->pos;
+
+	return tmp;
+}
+
+/**
+ * @brief h264/getbit.c Generic bit parser. decoding Exponential Golomb coding
+ *
+ * Copyright (C) 2010 Creytiv.com
+ */
+static int get_ue_golomb(struct getbit *gb, unsigned *valp)
+{
+	unsigned zeros = 0;
+	unsigned info;
+	int i;
+
+	if (!gb)
+		return EINVAL;
+
+	while (1) {
+
+		if (getbit_get_left(gb) < 1)
+			return EBADMSG;
+
+		if (0 == get_bit(gb))
+			++zeros;
+		else
+			break;
+	}
+
+	info = 1 << zeros;
+
+	for (i = zeros - 1; i >= 0; i--) {
+
+		if (getbit_get_left(gb) < 1)
+			return EBADMSG;
+
+		info |= get_bit(gb) << i;
+	}
+
+	if (valp)
+		*valp = info - 1;
+
+	return 0;
+}
 
 /**
  * @brief parameters.
@@ -38,13 +150,11 @@ enum {
  */
 #define MAX_MACROBLOCKS 1048576u
 
-/**
- * @brief Decode a Scaling List.
- * @param gb a instance of Exponential Golomb Decorder
- * @param scaling_list output a scaling list, must be allocated
- * @param sizeofscalinglist size of a scaling list
- * @param usedefaultscalingmatrix If this flag is true, the corresponding scaling matrix must be used.
- * @return 0 if success, otherwise errorcode
+/*
+ * @brief h264/sps.c scaling_list
+ *
+ * Copyright (C) 2010 Creytiv.com
+ * @sa libavcodec/h264_ps.c decode_scaling_list()
  */
 static int scaling_list(struct getbit *gb,
 			unsigned *scaling_list, size_t sizeofscalinglist,
@@ -78,12 +188,11 @@ static int scaling_list(struct getbit *gb,
 	return 0;
 }
 
-
-/**
- * @brief Decode a Scaling Matrix.
- * @param gb a instance of Exponential Golomb Decorder
- * @param chroma_format_idc chroma_format_idc
- * @return 0 if success, otherwise errorcode
+/*
+ * @brief h264/sps.c decode_scaling_matrix
+ *
+ * Copyright (C) 2010 Creytiv.com
+ * @sa libavcodec/h264_ps.c decode_scaling_metrices()
  */
 static int decode_scaling_matrix(struct getbit *gb, unsigned chroma_format_idc)
 {
@@ -121,14 +230,11 @@ static int decode_scaling_matrix(struct getbit *gb, unsigned chroma_format_idc)
 	return 0;
 }
 
-/**
- * @brief Decode a Sequence Parameter Set (SPS) bitstream
+/*
+ * @brief h264/sps.c H.264 SPS parser
  *
- * @param sps  Decoded H.264 SPS
- * @param buf  SPS bitstream to decode, excluding NAL header
- * @param len  Number of bytes
- *
- * @return 0 if success, otherwise errorcode
+ * Copyright (C) 2010 Creytiv.com
+ * @sa libavcodec/h264_ps.c ff_h264_decode_seq_parameter_set()
  */
 int h264_sps_decode(struct h264_sps *sps, const uint8_t *buf, const size_t len)
 {
@@ -344,84 +450,3 @@ int h264_sps_decode(struct h264_sps *sps, const uint8_t *buf, const size_t len)
 	return 0;
 }
 
-static void getbit_init(struct getbit *gb, const uint8_t *buf, size_t size)
-{
-	if (!gb)
-		return;
-
-	gb->buf = buf;
-	gb->pos = 0;
-	gb->end = size;
-}
-
-
-static size_t getbit_get_left(const struct getbit *gb)
-{
-	if (!gb)
-		return 0;
-
-	if (gb->end > gb->pos)
-		return gb->end - gb->pos;
-	else
-		return 0;
-}
-
-
-static unsigned get_bit(struct getbit *gb)
-{
-	const uint8_t *p;
-	register unsigned tmp;
-
-	if (!gb)
-		return 0;
-
-	if (gb->pos >= gb->end) {
-		fprintf(stderr, "get_bit: read past end"
-			   " (%zu >= %zu)\n", gb->pos, gb->end);
-		return 0;
-	}
-
-	p = gb->buf;
-	tmp = ((*(p + (gb->pos >> 0x3))) >> (0x7 - (gb->pos & 0x7))) & 0x1;
-
-	++gb->pos;
-
-	return tmp;
-}
-
-
-static int get_ue_golomb(struct getbit *gb, unsigned *valp)
-{
-	unsigned zeros = 0;
-	unsigned info;
-	int i;
-
-	if (!gb)
-		return EINVAL;
-
-	while (1) {
-
-		if (getbit_get_left(gb) < 1)
-			return EBADMSG;
-
-		if (0 == get_bit(gb))
-			++zeros;
-		else
-			break;
-	}
-
-	info = 1 << zeros;
-
-	for (i = zeros - 1; i >= 0; i--) {
-
-		if (getbit_get_left(gb) < 1)
-			return EBADMSG;
-
-		info |= get_bit(gb) << i;
-	}
-
-	if (valp)
-		*valp = info - 1;
-
-	return 0;
-}

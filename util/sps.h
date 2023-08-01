@@ -1,8 +1,3 @@
-/**
- * @brief Decode a Sequence Parameter Set (SPS) bitstream
- * @licence 2 clause BSD license.
- * @copyright Copyright (C) 2010 - 2019 Creytiv.com
- */
 #ifndef _H264_SPS_H_
 #define _H264_SPS_H_
 
@@ -11,7 +6,6 @@
 
 /**
  * @brief H.264 Sequence Parameter Set (SPS)
- * @sa https://www.itu.int/rec/T-REC-H.264
  */
 struct h264_sps {
 	uint8_t profile_idc;
@@ -39,7 +33,7 @@ struct h264_sps {
 };
 
 /**
- * @brief Decode a Sequence Parameter Set (SPS) bitstream
+ * Decode a Sequence Parameter Set (SPS) bitstream
  *
  * @param sps  Decoded H.264 SPS
  * @param buf  SPS bitstream to decode, excluding NAL header
